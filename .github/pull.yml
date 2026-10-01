@@ -1,0 +1,7 @@
+version: "1"
+rules:
+  - base: fork
+    upstream: python-poetry/poetry:main
+    mergeMethod: merge
+    assignees:
+      - polfeliu
