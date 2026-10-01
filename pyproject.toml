@@ -1,10 +1,10 @@
 [project]
 name = "poetry"
-version = "2.5.0.dev0"
+version = "2.5.1"
 description = "Python dependency management and packaging made easy."
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "poetry-core @ git+https://github.com/python-poetry/poetry-core.git",
+    "poetry-core (==2.5.0)",
     "build (>=1.2.1,<2.0.0)",
     "cachecontrol[filecache] (>=0.14.0,<0.15.0)",
     "cleo (>=2.1.0,<3.0.0)",
@@ -71,7 +71,6 @@ pre-commit = ">=2.10"
 
 [tool.poetry.group.test.dependencies]
 coverage = ">=7.2.0"
-deepdiff = ">=6.3"
 # test_clone_with_lfs_files relies on being able to use
 # locally cloned LFS stores, which requires dulwich>=1.2.1
 dulwich = ">=1.2.1"
@@ -135,6 +134,7 @@ extend-safe-fixes = [
 unfixable = [
     "ERA", # do not autoremove commented out code
 ]
+typing-extensions = false
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

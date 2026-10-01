@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -16,7 +17,6 @@ from poetry.core.constraints.version import Version
 from poetry.config.config import Config
 from poetry.console.exceptions import PoetryConsoleError
 from poetry.toml.file import TOMLFile
-from poetry.utils.env import GET_BASE_PREFIX
 from poetry.utils.env import GET_PYTHON_VERSION_ONELINER
 from poetry.utils.env import EnvManager
 from poetry.utils.env import IncorrectEnvError
@@ -24,6 +24,7 @@ from poetry.utils.env.env_manager import EnvsFile
 from poetry.utils.env.python.exceptions import InvalidCurrentPythonVersionError
 from poetry.utils.env.python.exceptions import NoCompatiblePythonVersionFoundError
 from poetry.utils.env.python.exceptions import PythonVersionNotFoundError
+from poetry.utils.env.script_strings import GET_ENVIRONMENT_DATA
 from poetry.utils.helpers import remove_directory
 
 
@@ -55,6 +56,21 @@ def check_output_wrapper(
     def check_output(cmd: list[str], *args: Any, **kwargs: Any) -> str:
         # cmd is a list, like ["python", "-c", "do stuff"]
         python_cmd = cmd[-1]
+        if '"marker_env": env' in python_cmd:
+            return json.dumps(
+                {
+                    "base_prefix": sys.base_prefix,
+                    "marker_env": {
+                        "version_info": [
+                            version.major,
+                            version.minor,
+                            version.patch,
+                        ]
+                    },
+                    "paths": {},
+                }
+            )
+
         if "print(json.dumps(env))" in python_cmd:
             return (
                 f'{{"version_info": [{version.major}, {version.minor},'
@@ -1052,7 +1068,17 @@ def test_create_venv_fails_if_no_compatible_python_version_could_be_found(
 
     mocker.patch(
         "subprocess.check_output",
-        side_effect=[sys.base_prefix, "/usr/bin/python", "3.9.0"],
+        side_effect=[
+            json.dumps(
+                {
+                    "base_prefix": sys.base_prefix,
+                    "marker_env": {},
+                    "paths": {},
+                }
+            ),
+            "/usr/bin/python",
+            "3.9.0",
+        ],
     )
     m = mocker.patch(
         "poetry.utils.env.EnvManager.build_venv", side_effect=lambda *args, **kwargs: ""
@@ -1200,11 +1226,44 @@ def test_create_venv_fails_if_current_python_version_is_not_supported(
 
     expected_message = (
         f"Current Python version ({current_version}) is not allowed by the project"
-        f' ({package_version}).\nPlease change python executable via the "env use"'
-        " command."
+        f" ({package_version}).\n"
+        f'Please change python executable via the "env use" command.'
     )
 
-    assert expected_message == str(e.value)
+    assert str(e.value) == expected_message
+
+
+@pytest.mark.parametrize("use_poetry_python", [True, False])
+def test_create_venv_fails_if_current_python_version_is_not_supported_no_venv_creation(
+    manager: EnvManager,
+    poetry: Poetry,
+    config: Config,
+    use_poetry_python: bool,
+) -> None:
+    config.config["virtualenvs"]["create"] = False
+    config.config["virtualenvs"]["use-poetry-python"] = use_poetry_python
+    if "VIRTUAL_ENV" in os.environ:
+        del os.environ["VIRTUAL_ENV"]
+
+    current_version = Version.parse(".".join(str(c) for c in sys.version_info[:3]))
+    assert current_version.minor is not None
+    next_version = ".".join(
+        str(c) for c in (current_version.major, current_version.minor + 1, 0)
+    )
+    package_version = "~" + next_version
+    poetry.package.python_versions = package_version
+
+    with pytest.raises(InvalidCurrentPythonVersionError) as e:
+        manager.create_venv()
+
+    expected_message = (
+        f"Current Python version ({current_version}) is not allowed by the project"
+        f" ({package_version}).\n"
+        "Poetry cannot switch to a compatible Python version"
+        " because virtualenv creation is disabled."
+    )
+
+    assert str(e.value) == expected_message
 
 
 def test_create_venv_project_name_empty_sets_correct_prompt(
@@ -1269,8 +1328,14 @@ def test_create_venv_accepts_fallback_version_w_nonzero_patchlevel(
                 return "3.5.12"
             return "3.7.1"
 
-        if GET_BASE_PREFIX in cmd:
-            return sys.base_prefix
+        if GET_ENVIRONMENT_DATA in cmd:
+            return json.dumps(
+                {
+                    "base_prefix": sys.base_prefix,
+                    "marker_env": {},
+                    "paths": {},
+                }
+            )
 
         return "/usr/bin/python3.5"
 
