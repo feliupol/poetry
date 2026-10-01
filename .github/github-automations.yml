@@ -1,0 +1,9 @@
+version: 1
+automerge:
+  label: automerge
+  base_branches: [fork]
+  merge_method: merge
+  delete_branch: false
+upstream_sync:
+  - base: fork
+    upstream: python-poetry/poetry:main
